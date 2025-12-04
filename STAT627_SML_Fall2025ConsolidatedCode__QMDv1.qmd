@@ -1,0 +1,684 @@
+---
+title: "Group Project"
+subtitle: "Name: Predicting Deficits in Action Prediction from Tumor Location_Course_STAT 627-Statistical Machine Learning"
+number-sections: true
+date: today
+format:
+  html:
+    embed-resources: true
+---
+
+------------------------------------------------------------------------
+
+#Start of EDA
+
+```{r}
+#install needed libraries and read in data to a data frame; then view data
+library(dplyr)
+library(readr)
+library(car)
+
+data <- read_csv("D:\\MS Data Science_online\\STAT_627_FALL2025\\BAROUTI_FALL2025\\Group Project\\Dataset_ButtietAl_2020_COMBINED.csv")
+
+glimpse(data)
+```
+
+#Data Cleaning
+
+```{r}
+# data cleaning
+
+# change data types to factor; majority boolean; tumor type range from 1 to 4 
+data$Sex<- as.factor(data$Sex) 
+data$Location <- as.factor(data$Location)
+data$`Tumor type` <- as.factor(data$`Tumor type`)
+data$Radiotherapy <- as.factor(data$Radiotherapy)
+data$Chemotherapy <- as.factor(data$Chemotherapy)
+data$Neurosurgery <- as.factor(data$Neurosurgery)
+
+head(data)
+
+```
+
+```{r}
+#data cleaning
+#checking duplicate entries
+
+sum(duplicated(data))
+data[duplicated(data),]
+
+
+```
+
+\*\*Found 5 dupes
+
+```{r}
+# data cleaning
+# remove dupes
+
+data<-data%>%
+  distinct()
+
+```
+
+```{r}
+#data cleaning
+#test to make sure dupes are removed
+sum(duplicated(data))
+data[duplicated(data),]
+```
+
+```{r}
+# data cleaning
+# check NAs
+colSums(is.na(data))
+
+# remove NAs
+data <- data%>%
+  filter(complete.cases(.))
+
+# checking rows and columns
+nrow(data)
+
+ncol(data)
+
+```
+
+#start of analysis; Recall: high bias =\> underfitting & high variance =\>overfitting
+
+```{r}
+#visual 1
+# checking bias and variance in the data using bar plot 
+variables <- c("BETA index", "Sex", "Tumor type", "Radiotherapy", "Chemotherapy")
+
+for (var_name in variables) {
+  freq_table <- table(data[[var_name]])
+
+barplot(freq_table, main = paste("Frequency of", var_name), xlab = var_name, ylab = "Frequency",col = "blue") }
+
+```
+
+\*\*bar plots may not be very useful; will look at scatter plots
+
+```{r}
+# visual 2
+# plot a scatter plot for beta index vs atp 10 and atp 90 and toma-tscoes (sex,age_months)
+
+library(plotly)
+
+plot_ly(
+  data = data,
+  x = ~`ATP 10%`,
+  y = ~`BETA index`,
+  type = "scatter",
+  mode = "markers",
+  color = ~Sex,
+  colors = c("hotpink", "steelblue"),
+  marker = list(size = 10, opacity = 0.7),
+  hoverinfo = "text",
+  text = ~paste(
+    "ID:", Id,
+    "<br>Sex:", ifelse(Sex == 0, "Female", "Male"),
+    "<br>Accuracy 10%:", round(`ATP 10%`, 3),
+    "<br>Beta Index:", round(`BETA index`, 3)
+  )
+) %>%
+  layout(
+    title = "Interactive Beta Index vs Accuracy (10%) by Sex",
+    xaxis = list(title = "Accuracy at 10%"),
+    yaxis = list(title = "BETA index"),
+    legend = list(title = list(text = "Sex"))
+  )
+
+```
+
+
+
+
+
+```{r}
+# visual 3
+# plot a scatter plot for beta index vs atp 10 and atp 90 and toma-tscoes (sex,age_months)
+
+
+library(plotly)
+
+plot_ly(
+  data,
+  x = ~ data$`TomA Raw scores`,
+  y = ~ data$`BETA index`,
+  z = ~`ATP 90%`,
+  color = ~Sex,
+  colors = c("hotpink", "steelblue"),
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 5, opacity = 0.8)
+) %>% 
+  layout(
+    title = "3D Interactive Plot: TomA vs Beta Index vs Accuracy 90%",
+    scene = list(
+      xaxis = list(title = "TomA T-scores"),
+      yaxis = list(title = "Beta Index"),
+      zaxis = list(title = "Accuracy 90%")
+    )
+  )
+
+```
+
+
+
+
+```{r}
+# shows all data cleaning done
+glimpse(data)
+
+```
+
+**Hypothesis** 
+**beta = 0  || Null hypothesis there is no difference between groups.**
+**beta != 0 || Alternated there a difference between groups.**
+
+
+```{r}
+# creating model
+# Multi colinearity
+
+full_model <- lm(`BETA index` ~ . , data = data)
+summary(full_model)
+```
+
+**Residual standard error: 0.2927 **
+**Multiple R-squared:  0.8958**
+**Adjusted R-squared:0.7331**
+**F-statistic: 5.504 on 25 and 16 D **  
+**p-value: 0.0004478 = 4.478 x 10-4 **
+
+##Observations
+model P value is significant; R squared about 90 of model variance can be explained; Adjusted R squared decreased to 73%
+because of number of variables, suspect overfitting
+P value for Predictor: ATP 10% = 4.26e-06 is significant
+P value for Predictor: ATP 90% = 0.000542 = 5.42e-4 is significant
+
+
+
+
+
+```{r}
+# checking multicolinearity within the variables and that GVIF is between or including 0-10 but not greater than 10
+
+vif(full_model)
+```
+
+**Based on GVIF we removed the following predictors to reduce the model: is  
+Age, AgeMonths, Age at diagnosis, Time since diagnosis, Tumor type,  Affect Rec. Raw scores and ... above 10. 
+**removed id, not usefull**
+
+
+
+
+
+```{r}
+# used the variables in reduced model which were GVIF 0-10
+#reduced_model_1 <- lm(`BETA index` ~ Id +Sex +Location + Radiotherapy +Chemotherapy + Neurosurgery +  FSIQ + `Accuracy Familiarization` +`ATP 10%` + `ATP 40%` + `ATP 60%` +`ATP 90%`, data = data )
+reduced_model_1 <- lm(`BETA index` ~ Sex +Location + Radiotherapy +Chemotherapy + Neurosurgery +  FSIQ + `Accuracy Familiarization` +`ATP 10%` + `ATP 40%` + `ATP 60%` +`ATP 90%`, data = data )
+summary(reduced_model_1)
+```
+
+
+```{r}
+# compared values like p-values and standard error to determine better model. We know the VIF should be 0-5 but data is small so we are considering 0-10. This reduced model now becomes full model moving forward.
+
+reduced_model_2 <- lm(`BETA index` ~ `ATP 10%` + `ATP 90%`, data = data )
+summary(reduced_model_2) 
+```
+
+
+**Above suggests underfitting because Adj R Squared in model 2 is lower than model 1
+Adjusted R-squared:  0.6975 (model 2)
+Adjusted R-squared:  0.7474 (model 1)
+
+
+
+
+**OBSERVATION:**
+
+#full_model :
+#  Adjusted R-squared:  0.7331
+# Residual standard error: 0.2927 on 16 degrees of freedom
+# p-value: 0.0004478
+
+# red_model_1 : ( based on vif model we chose the variables with less than 10 vif, because it is such a small dataset)
+# Highest adjusted r squared and lowest standard error so we chose this model.
+# Adjusted R-squared:  0.7388 
+#Residual standard error: 0.2896 on 29 degrees of freedom
+# p-value: 1.213e-07
+
+# red_model_2
+# Adjusted R-squared:  0.6975 
+# Residual standard error: 0.3116 on 39 degrees of freedom
+# p-value: 2.815e-11
+
+
+
+
+```{r}
+# linear regression base model without splitting data set.
+full_model <- lm(`BETA index` ~ . , data = data)
+summary(full_model)
+```
+**overall p-value is less than 0.05 meaning there is a difference between the groups so we reject the null hypothesis.**
+**Hypothesis** 
+**beta = 0  || Null hypothesis there is no difference between groups.**
+**beta != 0 || Alternated there a difference between groups.**
+
+
+```{r}
+# linear regression base model without splitting data set.
+full_model_2 <- lm(`BETA index` ~ . , data = data)
+summary(full_model_2)
+
+# overall p-value is less than 0.05 meaning there is a difference between the groups so we reject the null hypothesis.
+
+plot(full_model_2)
+# residuals vs fitted plot no definite pattern. So it is not a bad plot.
+# Q-Q plot we outliers. Not a good straight line.
+```
+
+
+
+ Checking for model assumptions
+```{r}
+# split the data.
+# dataset is so small we use a 95% to training and 5% for validation.
+set.seed(123)
+Z <- sample(nrow(data), .95* nrow(data))
+data_train <- data[Z,]
+data_test <- data[-Z,]
+ 
+
+x_train <- model.matrix(`BETA index` ~ . , data = data_train)[,-1]
+
+y_train <- data_train$`BETA index`
+
+x_test <- model.matrix(`BETA index` ~ . , data = data_test)[,-1]
+y_test <- data_test$`BETA index`
+
+```
+
+
+
+for test set performance
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 1 LR with split dataset 
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+set.seed(123)
+full_model <- lm(`BETA index` ~ . , data = data_train)
+pred_full <- predict(full_model, newdata = data_test)
+mse_lm <- mean((y_test - pred_full)^2)
+mse_lm
+```
+
+for variable selection
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 2 Lasso  ##################3 psl complet the inter
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+library(glmnet)
+
+set.seed(123)
+lasso_model <- glmnet(x_train, y_train,alpha=1)
+best_lambda_lasso <- lasso_model$lambda.min
+pred_lasso <- predict(lasso_model,s= best_lambda_lasso, newx = x_test )
+mse_lasso <- mean((y_test - pred_lasso)^2)
+mse_lasso
+
+plot(lasso_model)
+coef(lasso_model)
+
+# with lasso we found mse is 0.29958 
+```
+smaller error with lasso
+
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 3 ridge
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+set.seed(123)
+ridge_model <- glmnet(x_train, y_train,alpha=0)
+best_lambda_ridge <- ridge_model$lambda.min
+pred_ridge <- predict(ridge_model,s= best_lambda_ridge, newx = x_test )
+mse_ridge <- mean((y_test - pred_ridge)^2)
+mse_ridge
+
+plot(ridge_model)
+
+coef(ridge_model)
+
+# ridge mse is 0.2477862
+```
+
+
+smaller error with ridge
+
+
+
+```{r}
+library(rpart)
+# install.packages("rpart.plot")
+library(rpart.plot)
+
+set.seed(123)
+tree_model <- rpart(`BETA index`~ . , data = data_train, method = "anova" )
+rpart.plot(tree_model)
+
+# gives the important variables ATP 10%, ATP 90% and TomA-Tscores >= 11
+
+pred_tree <- predict(tree_model, newdata= data_test)
+
+mse_tree <- mean((y_test -pred_tree)^2)
+mse_tree
+
+# decision tree mse is 0.9976152 - very high
+```
+
+
+
+
+
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 5 KNN
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+library(class)
+library(caret)
+
+preProc <- preProcess(data_train, method=c("center","scale"))
+train_scaled <- predict(preProc, data_train)
+test_scaled <- predict(preProc, data_test)
+
+set.seed(123)
+knn_model <- train(`BETA index` ~ ., data=train_scaled)
+pred_knn <- predict(knn_model, newdata=test_scaled)
+mse_knn <- mean((y_test - pred_knn)^2)
+mse_knn
+# KNN Mse is 0.2208941.
+```
+
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 6 svm
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+    
+library(e1071)
+set.seed(123)
+svm_model <- svm(`BETA index`~ ., data = train_scaled, kernal = "radial") 
+pre_smv <- predict(svm_model, newdata = test_scaled)
+mse_svm <- mean((y_test - pre_smv)^2)
+mse_svm
+   
+
+# SVM mse is 0.1318 
+```
+
+# No  Model                Set.seed  MSE 
+# 1.  Linear Regression     123.     0.42166
+# 2.  Lasso                 123.     0.29958
+# 3.  Ridge                 123.     0.24778
+# 4   Decision tree.        123.     0.9976
+# 5.  KNN.                  123.     0.22089
+# 6   SVM.                  123.     0.1318
+
+
+# final selection isssssssssssssssssssss SVM 
+# the lowest root mean squared error MSE is 0.1318 in SVM model. 
+
+
+
+
+
+```{r}
+cv5 <- trainControl(method = "cv", number=5)
+
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#  1 LR with 5 fold cv model on split dataset 
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+set.seed(123)
+full_model_cv <- lm(`BETA index` ~ . , data = train_scaled, method = "lm",trControl= cv5)
+pred_full_cv <- predict(full_model_cv, newdata = test_scaled)
+mse_lm_cv <- mean((y_test - pred_full_cv)^2)
+mse_lm_cv
+
+# mse for lr with K= 5 fold cross validation is 0.6085835.
+```
+
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 2 Lasso CV 
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+set.seed(123)
+lasso_model_cv <- cv.glmnet(x_train, y_train,alpha=1, trControl = cv5)
+best_lambda_lasso_cv <- lasso_model_cv$lambda.min
+pred_lasso_cv <- predict(lasso_model_cv,s= best_lambda_lasso_cv, newx = x_test )
+mse_lasso_cv <- mean((y_test - pred_lasso_cv)^2)
+mse_lasso_cv
+
+coef(lasso_model_cv)
+plot(lasso_model_cv)
+# mse for lasso with K= 5 fold cross validation is 0.1653343.
+```
+
+
+
+
+```{r}
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# model 3 ridge cv
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+set.seed(123)
+ridge_model_cv <- cv.glmnet(x_train, y_train,alpha=0, trControl = cv5)
+best_lambda_ridge_cv <- ridge_model_cv$lambda.min
+pred_ridge_cv <- predict(ridge_model_cv,s= best_lambda_ridge_cv, newx = x_test )
+mse_ridge_cv <- mean((y_test - pred_ridge_cv)^2)
+mse_ridge_cv
+
+coef(ridge_model_cv)
+plot(ridge_model_cv)
+
+# mse for ridge with K= 5 fold cross validation is 0.2464714 .
+```
+
+
+Implementing Jacknife LOOCV with Linear Model 95%/5% split
+```{r}
+library(glmnet)
+
+x = rbind(x_train, x_test)
+y = rbind(y_train, y_test)
+n <- nrow(x)   # use full data x,y for LOOCV
+pred_loo <- numeric(n)
+
+set.seed(123)
+for (i in seq_len(n)) {
+  # training indices
+  train_idx <- setdiff(seq_len(n), i)
+  x_train_loo <- x[train_idx, , drop = FALSE]
+  y_train_loo <- y[train_idx]
+  x_test_loo  <- x[i, , drop = FALSE]
+  
+  # choose lambda using CV on the training set
+  cvfit <- cv.glmnet(x_train_loo, y_train_loo, alpha = 1, nfolds = min(10, length(train_idx)))
+  lambda_i <- cvfit$lambda.min
+  
+  # fit on training set with chosen lambda and predict the left-out point
+  fit_i <- glmnet(x_train_loo, y_train_loo, alpha = 1)
+  pred_loo[i] <- predict(fit_i, s = lambda_i, newx = x_test_loo)
+}
+
+# observed values are y
+loo_errors <- as.numeric(y - pred_loo)
+loo_mse  <- mean(loo_errors^2)
+loo_mae  <- mean(abs(loo_errors))
+cat("LOOCV (explicit) MSE:", loo_mse, " MAE:", loo_mae, "\n")
+```
+more stable estimate than Linear Regression model with 95% 5% split
+shows sensitivity of model performance to removal of data point
+providing new evaluation scheme, better than one way split
+
+
+
+Implement Jackknife (LOOCV) for kNN
+```{r}
+library(class)
+library(caret)
+
+# -------------------------
+# Jackknife (LOOCV) for kNN
+# -------------------------
+
+# y variable
+y <- data_train$`BETA index`
+
+n <- nrow(data_train)
+pred_loo <- numeric(n)
+
+set.seed(123)
+
+for (i in 1:n) {
+  # Split data
+  train_i <- data_train[-i, ]
+  test_i  <- data_train[i, , drop = FALSE]
+
+  # Preprocess (center + scale) on training fold only
+  pre_i <- preProcess(train_i, method = c("center", "scale"))
+  train_i_scaled <- predict(pre_i, train_i)
+  test_i_scaled  <- predict(pre_i, test_i)
+
+  # Train kNN model on the training fold
+  fit_i <- train(
+    `BETA index` ~ ., 
+    data = train_i_scaled,
+    method = "knn"
+  )
+
+  # Predict on the left-out observation
+  pred_loo[i] <- predict(fit_i, newdata = test_i_scaled)
+}
+
+# Compute jackknife (LOOCV) prediction error
+jackknife_mse <- mean((y - pred_loo)^2)
+jackknife_mae <- mean(abs(y - pred_loo))
+
+cat("Jackknife (LOOCV) MSE:", jackknife_mse, "\n")
+
+```
+0.2467025 (knn)
+
+
+bootstrap for resampling 
+```{r}
+library(caret)
+
+B <- 500   # number of bootstrap samples
+boot_mse <- numeric(B)
+
+set.seed(123)
+
+for (b in 1:B) {
+  # sample rows with replacement
+  idx <- sample(1:nrow(data_train), replace = TRUE)
+  boot_train <- data_train[idx, ]
+  
+  # preprocess inside bootstrap sample
+  pre_b <- preProcess(boot_train, method = c("center", "scale"))
+  boot_train_scaled <- predict(pre_b, boot_train)
+  boot_test_scaled  <- predict(pre_b, data_test)
+  
+  # fit KNN
+  fit_b <- train(`BETA index` ~ ., data = boot_train_scaled, method = "knn")
+  
+  # predict on test set
+  pred_b <- predict(fit_b, newdata = boot_test_scaled)
+  
+  boot_mse[b] <- mean((y_test - pred_b)^2)
+}
+
+# Bootstrap estimate of prediction error
+bootstrap_mse <- mean(boot_mse)
+bootstrap_se  <- sd(boot_mse)
+
+cat("Bootstrap MSE:", bootstrap_mse, "\n")
+quantile(boot_mse, c(.025, .975))
+```
+
+**ANALYSIS**
+Manual bootstrap for prediction MSE (classic bootstrap)
+This gives a bootstrap distribution of the prediction MSE on your test set.
+Idea
+1) Resample training data with replacement
+2) Preprocess
+3) Fit model
+4) Predict on test set
+5) Compute test MSE
+6) Repeat B times
+7) Get bootstrap Confidence Interval 
+
+
+
+PCA=> PCR => PLS; PCA maximize covarianece to find direction of greatest variance in data set
+```{r}
+library(pls)
+
+# ------------------------------------
+# Preprocess (same as your KNN code)
+# ------------------------------------
+preProc <- preProcess(data_train, method = c("center", "scale"))
+train_scaled <- predict(preProc, data_train)
+test_scaled  <- predict(preProc, data_test)
+
+# ------------------------------------
+# PCR model with cross-validation
+# ------------------------------------
+set.seed(123)
+pcr_model <- train(
+  `BETA index` ~ .,
+  data = train_scaled,
+  method = "pcr",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 15    # number of components to try
+)
+
+pred_pcr <- predict(pcr_model, newdata = test_scaled)
+mse_pcr <- mean((y_test - pred_pcr)^2)
+mse_pcr
+```
+
+```{r}
+# ------------------------------------
+# PLS model with cross-validation
+# ------------------------------------
+set.seed(123)
+pls_model <- train(
+  `BETA index` ~ .,
+  data = train_scaled,
+  method = "pls",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 15     # number of latent components
+)
+pred_pls <- predict(pls_model, newdata = test_scaled)
+mse_pls <- mean((y_test - pred_pls)^2)
+mse_pls
+```
+
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+
+
