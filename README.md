@@ -1,4 +1,4 @@
-Research Topic: Predicting Deficits in Action Prediction from Tumor Location
+# Research Topic: Predicting Deficits in Action Prediction from Tumor Location
 Requirement: Fall 2025, Stat 627, Statistical Machine Learning; American University
 Team: Sally Henley, Ogechi Onyewu, Rebecca Tegiacchi
 
